@@ -206,3 +206,108 @@
         (ok proposal-id)
     ))
 )
+
+(define-public (vote (proposal-id uint) (vote-for bool))
+    (let (
+        (proposal (unwrap! (map-get? proposals proposal-id) ERR-PROPOSAL-NOT-FOUND))
+        (voter-power (calculate-voting-power tx-sender))
+    )
+    (begin
+        ;; Input and state validation
+        (asserts! (is-member tx-sender) ERR-NOT-AUTHORIZED)
+        (asserts! (is-eq (get status proposal) "ACTIVE") ERR-PROPOSAL-NOT-ACTIVE)
+        (asserts! (<= block-height (get end-block proposal)) ERR-PROPOSAL-EXPIRED)
+        (asserts! (is-none (map-get? votes {proposal-id: proposal-id, voter: tx-sender})) ERR-ALREADY-VOTED)
+        
+        ;; Type check before validation
+        (asserts! (is-valid-bool vote-for) ERR-INVALID-VOTE)
+        
+        ;; Vote processing with verified input
+        (let ((safe-vote (is-eq vote-for true)))
+            ;; Record the vote
+            (map-set votes 
+                {proposal-id: proposal-id, voter: tx-sender} 
+                {vote: safe-vote}
+            )
+            
+            ;; Update vote counts
+            (map-set proposals proposal-id 
+                (merge proposal 
+                    {
+                        yes-votes: (if safe-vote
+                            (+ (get yes-votes proposal) voter-power)
+                            (get yes-votes proposal)
+                        ),
+                        no-votes: (if safe-vote
+                            (get no-votes proposal)
+                            (+ (get no-votes proposal) voter-power)
+                        )
+                    }
+                )
+            )
+            (ok true)
+        )
+    ))
+)
+
+(define-public (execute-proposal (proposal-id uint))
+    (let (
+        (proposal (unwrap! (map-get? proposals proposal-id) ERR-PROPOSAL-NOT-FOUND))
+    )
+    (begin
+        (asserts! (>= block-height (get end-block proposal)) ERR-PROPOSAL-NOT-ACTIVE)
+        (asserts! (not (get executed proposal)) ERR-INVALID-STATUS)
+        
+        (if (and
+            (>= (get yes-votes proposal) 
+                (/ (* (var-get total-staked) (var-get quorum-threshold)) u1000)
+            )
+            (> (get yes-votes proposal) (get no-votes proposal))
+        )
+            (begin
+                (try! (as-contract (stx-transfer? (get amount proposal) 
+                    (as-contract tx-sender) 
+                    (get recipient proposal))))
+                
+                (map-set proposals proposal-id 
+                    (merge proposal {
+                        status: "EXECUTED",
+                        executed: true
+                    })
+                )
+                (ok true)
+            )
+            (begin
+                (map-set proposals proposal-id 
+                    (merge proposal {
+                        status: "REJECTED",
+                        executed: true
+                    })
+                )
+                (ok true)
+            )
+        )
+    ))
+)
+
+;; Read-only Functions
+(define-read-only (get-member-info (address principal))
+    (map-get? members address)
+)
+
+(define-read-only (get-proposal-info (proposal-id uint))
+    (map-get? proposals proposal-id)
+)
+
+(define-read-only (get-vote-info (proposal-id uint) (voter principal))
+    (map-get? votes {proposal-id: proposal-id, voter: voter})
+)
+
+(define-read-only (get-dao-info)
+    {
+        total-staked: (var-get total-staked),
+        proposal-count: (var-get proposal-count),
+        quorum-threshold: (var-get quorum-threshold),
+        min-proposal-amount: (var-get min-proposal-amount)
+    }
+)
