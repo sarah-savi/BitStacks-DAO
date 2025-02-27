@@ -76,3 +76,78 @@
         false
     )
 )
+
+(define-private (is-valid-bool (input bool))
+    (or 
+        (is-eq input true)
+        (is-eq input false)
+    )
+)
+
+(define-private (validate-string-ascii (input (string-ascii 500)))
+    (and 
+        (not (is-eq input ""))
+        (<= (len input) u500)
+    )
+)
+
+(define-private (validate-principal (address principal))
+    (and
+        (not (is-eq address tx-sender))
+        (not (is-eq address (as-contract tx-sender)))
+    )
+)
+
+(define-private (validate-vote (vote-value bool))
+    (if (is-valid-bool vote-value)
+        (ok vote-value)
+        ERR-INVALID-VOTE
+    )
+)
+
+(define-private (get-proposal-status (proposal-id uint))
+    (match (map-get? proposals proposal-id)
+        proposal (get status proposal)
+        "NOT_FOUND"
+    )
+)
+
+(define-private (calculate-voting-power (address principal))
+    (match (map-get? members address)
+        member (get staked-amount member)
+        u0
+    )
+)
+
+;; Public Functions
+(define-public (initialize (new-owner principal))
+    (begin
+        (asserts! (is-dao-owner) ERR-NOT-AUTHORIZED)
+        (asserts! (validate-principal new-owner) ERR-INVALID-OWNER)
+        (var-set dao-owner new-owner)
+        (ok true)
+    )
+)
+
+;; Membership Functions
+(define-public (stake-tokens (amount uint))
+    (begin
+        (asserts! (>= amount u0) ERR-INVALID-AMOUNT)
+        (try! (stx-transfer? amount tx-sender (as-contract tx-sender)))
+        
+        (let (
+            (current-balance (default-to 
+                {staked-amount: u0, last-reward-block: block-height, rewards-claimed: u0} 
+                (map-get? members tx-sender)))
+        )
+            (map-set members tx-sender {
+                staked-amount: (+ (get staked-amount current-balance) amount),
+                last-reward-block: block-height,
+                rewards-claimed: (get rewards-claimed current-balance)
+            })
+            
+            (var-set total-staked (+ (var-get total-staked) amount))
+            (ok true)
+        )
+    )
+)
