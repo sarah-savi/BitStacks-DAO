@@ -151,3 +151,58 @@
         )
     )
 )
+
+(define-public (unstake-tokens (amount uint))
+    (let (
+        (current-balance (unwrap! (map-get? members tx-sender) ERR-NOT-AUTHORIZED))
+    )
+    (begin
+        (asserts! (>= (get staked-amount current-balance) amount) ERR-INSUFFICIENT-BALANCE)
+        (try! (as-contract (stx-transfer? amount (as-contract tx-sender) tx-sender)))
+        
+        (map-set members tx-sender {
+            staked-amount: (- (get staked-amount current-balance) amount),
+            last-reward-block: block-height,
+            rewards-claimed: (get rewards-claimed current-balance)
+        })
+        
+        (var-set total-staked (- (var-get total-staked) amount))
+        (ok true)
+    ))
+)
+
+;; Proposal Functions
+(define-public (create-proposal (title (string-ascii 100)) 
+                              (description (string-ascii 500)) 
+                              (amount uint)
+                              (recipient principal))
+    (let (
+        (proposal-id (+ (var-get proposal-count) u1))
+        (proposer-stake (calculate-voting-power tx-sender))
+    )
+    (begin
+        ;; Input validation
+        (asserts! (>= proposer-stake (var-get min-proposal-amount)) ERR-NOT-AUTHORIZED)
+        (asserts! (>= amount u0) ERR-INVALID-AMOUNT)
+        (asserts! (validate-string-ascii title) ERR-INVALID-TITLE)
+        (asserts! (validate-string-ascii description) ERR-INVALID-DESCRIPTION)
+        (asserts! (validate-principal recipient) ERR-INVALID-RECIPIENT)
+        
+        (map-set proposals proposal-id {
+            proposer: tx-sender,
+            title: title,
+            description: description,
+            amount: amount,
+            recipient: recipient,
+            start-block: block-height,
+            end-block: (+ block-height (var-get proposal-duration)),
+            yes-votes: u0,
+            no-votes: u0,
+            status: "ACTIVE",
+            executed: false
+        })
+        
+        (var-set proposal-count proposal-id)
+        (ok proposal-id)
+    ))
+)
