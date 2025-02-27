@@ -137,12 +137,12 @@
         
         (let (
             (current-balance (default-to 
-                {staked-amount: u0, last-reward-block: block-height, rewards-claimed: u0} 
+                {staked-amount: u0, last-reward-block: stacks-block-height, rewards-claimed: u0} 
                 (map-get? members tx-sender)))
         )
             (map-set members tx-sender {
                 staked-amount: (+ (get staked-amount current-balance) amount),
-                last-reward-block: block-height,
+                last-reward-block: stacks-block-height,
                 rewards-claimed: (get rewards-claimed current-balance)
             })
             
@@ -162,7 +162,7 @@
         
         (map-set members tx-sender {
             staked-amount: (- (get staked-amount current-balance) amount),
-            last-reward-block: block-height,
+            last-reward-block: stacks-block-height,
             rewards-claimed: (get rewards-claimed current-balance)
         })
         
@@ -194,8 +194,8 @@
             description: description,
             amount: amount,
             recipient: recipient,
-            start-block: block-height,
-            end-block: (+ block-height (var-get proposal-duration)),
+            start-block: stacks-block-height,
+            end-block: (+ stacks-block-height (var-get proposal-duration)),
             yes-votes: u0,
             no-votes: u0,
             status: "ACTIVE",
@@ -216,7 +216,7 @@
         ;; Input and state validation
         (asserts! (is-member tx-sender) ERR-NOT-AUTHORIZED)
         (asserts! (is-eq (get status proposal) "ACTIVE") ERR-PROPOSAL-NOT-ACTIVE)
-        (asserts! (<= block-height (get end-block proposal)) ERR-PROPOSAL-EXPIRED)
+        (asserts! (<= stacks-block-height (get end-block proposal)) ERR-PROPOSAL-EXPIRED)
         (asserts! (is-none (map-get? votes {proposal-id: proposal-id, voter: tx-sender})) ERR-ALREADY-VOTED)
         
         ;; Type check before validation
@@ -255,7 +255,7 @@
         (proposal (unwrap! (map-get? proposals proposal-id) ERR-PROPOSAL-NOT-FOUND))
     )
     (begin
-        (asserts! (>= block-height (get end-block proposal)) ERR-PROPOSAL-NOT-ACTIVE)
+        (asserts! (>= stacks-block-height (get end-block proposal)) ERR-PROPOSAL-NOT-ACTIVE)
         (asserts! (not (get executed proposal)) ERR-INVALID-STATUS)
         
         (if (and
